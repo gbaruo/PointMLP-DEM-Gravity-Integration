@@ -1,0 +1,32 @@
+# =============================================================================
+# 依赖清单 (Dependencies)
+# -----------------------------------------------------------------------------
+# 核心算法依赖（必需）：
+numpy>=1.21
+scipy>=1.7
+pandas>=1.3
+pyyaml>=6.0
+
+# 深度学习（PSTINet）：
+torch>=1.12
+
+# 地理栅格 I/O（读写 GeoTIFF；若仅用 .npy 可不装）：
+rasterio>=1.3
+
+# 点云 I/O（读 .las/.laz；可选，缺失时支持 .xyz/.npy）：
+laspy>=2.0
+
+# 邻域/KD-tree（测点分布因子；scipy 已含 cKDTree，scikit-learn 可选）：
+scikit-learn>=1.0
+
+# 成图（后端服务器端出图，可选）：
+matplotlib>=3.5
+
+# 后端 Web API（backend/）：
+fastapi>=0.95
+uvicorn[standard]>=0.20
+python-multipart>=0.0.6
+websockets>=10.0
+
+# 测试：
+pytest>=7.0
