@@ -29,9 +29,8 @@
 数值稳定性
 ----------
 * 当 (x_i + r) 或 (y_j + r) 接近 0(角点几乎在观测点正下方的对侧)时，
-  对数项会发散，需用 epsilon 保护，或改用等价形式 ln(a+r)。
-* 当 z_k = 0(参考面与角点同高)时，arctan 项分母为 0，需特殊处理：
-  此时该项贡献取 0(因为 z_k 作为系数也趋于 0，乘积有界)。
+  对数项会发散，需用 epsilon 保护。
+* 当 z_k = 0(参考面与角点同高)时，arctan 项分母为 0，需特殊处理。
 * 本实现对上述退化情形统一加 epsilon 保护，保证生产数据不出 NaN。
 
 约定
@@ -39,8 +38,6 @@
 * 单位：长度用米(m)，密度用 kg/m^3，返回值为 m/s^2；
   调用方需自行乘 1e5 转换为 mGal。
 * z 轴向下为正：地面以上的地形(高于参考面)其质量在 z<0 一侧。
-  本实现以“观测点为原点、向下为正”，对地形改正的符号在
-  zone_integration 中统一处理，本函数只忠实返回解析积分值。
 """
 
 from __future__ import annotations
@@ -73,19 +70,17 @@ def prism_gravity_vertical(
     y1, y2 : 棱柱在 y 方向的下/上界(米)。
     z1, z2 : 棱柱在 z 方向的下/上界(米)，z 向下为正。
     density: 密度 ρ (kg/m^3)。
-    G      : 万有引力常数。
+    G      : 万有引力常���。
     epsilon: 数值稳定性保护极小值。
 
     返回
     ----
     g_z : 与输入广播后同形状的数组，单位 m/s^2。
     """
-    # 将六个面坐标组织成 (2,) 的“角点坐标”列表，便于三重容斥求和
     xs = [np.asarray(x1, dtype=np.float64), np.asarray(x2, dtype=np.float64)]
     ys = [np.asarray(y1, dtype=np.float64), np.asarray(y2, dtype=np.float64)]
     zs = [np.asarray(z1, dtype=np.float64), np.asarray(z2, dtype=np.float64)]
 
-    # 累加器：与广播形状一致
     total = np.zeros(np.broadcast(xs[0], ys[0], zs[0]).shape, dtype=np.float64)
 
     # 三重循环遍历 8 个角点 (i,j,k)，应用容斥符号 (-1)^(i+j+k)
@@ -95,20 +90,15 @@ def prism_gravity_vertical(
                 xi = xs[i]
                 yj = ys[j]
                 zk = zs[k]
-                # 角点到观测点(原点)的距离 r
                 r = np.sqrt(xi * xi + yj * yj + zk * zk) + epsilon
-                # 容斥符号 μ = (-1)^(i+j+k)
                 mu = float((-1) ** (i + j + k))
 
-                # 对数项参数加 epsilon 防止 ln(0)
                 term_xy = xi * np.log(yj + r + epsilon)
                 term_yx = yj * np.log(xi + r + epsilon)
-                # arctan 项：分母 zk*r 可能为 0，加 epsilon 保护
                 term_z = zk * np.arctan2(xi * yj, zk * r + epsilon)
 
                 total = total + mu * (term_xy + term_yx - term_z)
 
-    # g_z = G ρ * Σ(...)
     return G * density * total
 
 
