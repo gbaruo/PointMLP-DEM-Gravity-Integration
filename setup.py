@@ -23,7 +23,7 @@ setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="gbaruo",
-    author_email="your.email@example.com",  # 改为你的邮箱
+    author_email="ronando716@gmail.com",
     url="https://github.com/gbaruo/PointMLP-DEM-Gravity-Integration",
     license="MIT",
     classifiers=[
@@ -61,9 +61,13 @@ setup(
             "matplotlib>=3.5",
         ],
     },
+    include_package_data=True,
+    package_data={
+        "src": ["config/*.yaml", "webapp/templates/*", "webapp/static/*"]
+    },
     entry_points={
         "console_scripts": [
-            "terrain-correction=src.terrain_correction:main",  # 命令行入口(可选)
+            "terrain-correction=src.cli:main",  # 命令行入口
         ],
     },
     project_urls={
