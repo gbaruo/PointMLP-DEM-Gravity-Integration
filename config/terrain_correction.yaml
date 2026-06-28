@@ -8,12 +8,13 @@
 # =============================================================================
 
 # -----------------------------------------------------------------------------
-# 1. 坐标系与基本参数 (Coordinate Reference System & basics)
+# 0. CRS 快捷字段（便于直接传给 rasterio 等库）
 # -----------------------------------------------------------------------------
 crs:
-  # EPSG 代码。默认使用 CGCS2000 3 度带(示例：EPSG:4547，中央经线 114°E)。
-  # 生产中请改为测区实际投影带；必须是“米制投影坐标系”，不能用经纬度地理坐标。
+  # EPSG 代码。默认使用 CGCS2000 3 度带(示例：EPSG:4547)。
   epsg: 4547
+  # 便于直接使用的字符串（代码通常期望 "EPSG:xxxx"）
+  crs_string: "EPSG:4547"
   # 坐标单位（meter / degree）。方域积分要求米制，故默认 meter。
   units: meter
 
@@ -27,18 +28,17 @@ physics:
   mgal_scale: 1.0e5
 
 # -----------------------------------------------------------------------------
-# 2. 点云地面分类 (Point cloud ground filtering)
+# 1. 点云地面分类 (Point cloud ground filtering)
 # -----------------------------------------------------------------------------
 ground_filter:
   # 地面分类方法：csf(默认,布料模拟) | pmf(渐进形态学) | smrf(简单形态学) | deep(深度学习)
-  # 生产建议默认 csf（稳健、参数不敏感）；deep 为高级选项，需标注训练数据。
   method: csf
 
   # ---- CSF 布料模拟滤波参数 (Zhang et al., 2016) ----
   csf:
     cloth_resolution: 0.5     # 布料网格分辨率(米)，越小越精细、越慢。近区建议 0.5
     rigidness: 2              # 布料刚度 1~3：1柔软(陡峭地形) 3刚硬(平坦地形)
-    time_step: 0.65          # 模拟时间步长
+    time_step: 0.65           # 模拟时间步长
     class_threshold: 0.5      # 地面点判定阈值(米)：点到布料距离 < 阈值判为地面
     iterations: 500           # 最大迭代次数
     slope_smooth: false       # 是否对陡坡做后处理平滑
@@ -46,165 +46,203 @@ ground_filter:
   # ---- PMF 渐进形态学滤波参数 ----
   pmf:
     max_window_size: 33       # 最大滤波窗口(像元)
-    slope: 1.0               # 坡度阈值
+    slope: 1.0                # 坡度阈值
     initial_distance: 0.5     # 初始高差阈值(米)
-    max_distance: 3.0        # 最大高差阈值(米)
-    cell_size: 1.0           # 栅格化像元(米)
+    max_distance: 3.0         # 最大高差阈值(米)
+    cell_size: 1.0            # 栅格化像元(米)
 
   # ---- 深度学习地面分类(高级选项) ----
   deep:
-    model_path: null          # 训练好的权重路径；为空则回退到 csf 并给出明确提示
+    model_path: null         # 训练好的权重路径；为空则回退到 csf 并给出明确提示
     block_size: 50.0         # 切块边长(米)
-    points_per_block: 8192    # 每块采样点数
+    points_per_block: 8192   # 每块采样点数
 
 # -----------------------------------------------------------------------------
-# 3. 大规模点云分块/流式处理 (Tiling for billion-scale point clouds)
+# 2. 大规模点云分块/流式处理 (Tiling for billion-scale point clouds)
 # -----------------------------------------------------------------------------
 tiling:
-  # 上亿级点云不能一次性载入内存，按瓦片流式处理。
   enable: true
   tile_size: 250.0            # 瓦片边长(米)
-  buffer: 30.0               # 瓦片重叠缓冲区(米)，消除接缝；应 >= 近区插值搜索半径
+  buffer: 30.0                # 瓦片重叠缓冲区(米)，消除接缝；应 >= 近区插值搜索半径
   max_points_in_memory: 20000000  # 单次进内存的最大点数(约 2 千万)，按机器内存调整
   n_workers: 4               # 并行进程数(0 或 1 表示串行)
 
 # -----------------------------------------------------------------------------
-# 4. DEM 生成 (Gridding ground points -> high precision DEM)
+# 3. DEM 生成 (Gridding ground points -> high precision DEM)
 # -----------------------------------------------------------------------------
-dem_generation:
-  # 近区(点云)DEM 目标分辨率(米)。机载/地面点云常用 0.5 或 1.0。
-  near_resolution: 1.0
+# NOTE: 代码中使用的 key 名为 dem_from_pointcloud（DEMGridConfig），以下为
+# 与代码一致的字段。保留旧名 dem_generation 作为兼容注释（若需要也可保留）。
+# -----------------------------------------------------------------------------
+dem_from_pointcloud:
+  # 近区(点云)DEM 目标分辨率(米)
+  resolution: 1.0
   # 插值方法：idw(反距离加权) | tin(Delaunay 线性) | kriging(普通克里金,较慢)
+  method: idw
+  idw_power: 2.0
+  idw_k: 12
+  idw_search_radius: 10.0
+  crs: "EPSG:4547"
+  nodata: -9999.0
+
+# 兼容旧名（可选）
+dem_generation:
+  near_resolution: 1.0
   interpolation: idw
   idw:
-    power: 2.0               # 距离幂指数
-    search_radius: 10.0      # 搜索半径(米)
-    min_points: 3            # 邻域最少点数，不足则记为 nodata
-    max_points: 16           # 邻域最多点数
-  nodata: -9999.0            # 空值标记
+    power: 2.0
+    search_radius: 10.0
+    min_points: 3
+    max_points: 16
+  nodata: -9999.0
 
 # -----------------------------------------------------------------------------
-# 5. DEM 融合 (Near-zone point-cloud DEM  +  far-zone remote-sensing DEM)
+# 4. DEM 融合 (Near-zone point-cloud DEM  +  far-zone remote-sensing DEM)
+# -----------------------------------------------------------------------------
+# 结构既包含扁平字段(便于代码直接读取)，也保留 nested 子节点用于可读性/兼容。
 # -----------------------------------------------------------------------------
 dem_fusion:
-  # 融合输出统一分辨率(米)。一般与近区一致或取折中。
+  # 融合输出统一分辨率(米)
   target_resolution: 1.0
-  # 遥感 DEM 重采样方法：bilinear | cubic | nearest
+  # 过渡带宽度(米)
+  transition_width: 200.0
+  # 权重过渡函数: linear / cosine / sigmoid
+  method: cosine
+  sigmoid_k: 10.0
+  # 高程基准对齐: none / median / plane
+  datum_align: median
+  # 远区 DEM 重采样方法: nearest / bilinear / cubic
   resample: bilinear
-  # 羽化过渡带：在近区边界外设置过渡环，权重由 1 平滑过渡到 0
+  nodata: -9999.0
+
+  # 可读性/兼容性 nested fields
   feather:
-    method: cosine           # linear | cosine | sigmoid 平滑过渡函数
-    transition_width: 200.0  # 过渡带宽度(米)
-  # 高程基准对齐：消除两套 DEM 在重叠区的系统性高差
+    method: cosine
+    transition_width: 200.0
   datum_alignment:
     enable: true
-    method: median           # median(中值平移) | plane(最小二乘平面)
-    sample_max: 100000        # 重叠区采样点上限(控制速度)
+    method: median
+    sample_max: 100000
 
 # -----------------------------------------------------------------------------
-# 6. 方域积分地形改正 (Zone-domain prism integration — the analytic ground truth)
+# 5. 方域积分地形改正 (Zone-domain prism integration — the analytic ground truth)
+# -----------------------------------------------------------------------------
+# 保持原有详细字段，同时补充常用 zone_depth / rho（用于 train.py 等）
 # -----------------------------------------------------------------------------
 zone_integration:
-  # 近区半径(米)：使用高精度点云融合 DEM 做棱柱积分
   inner_radius: 2000.0
-  # 中远区外半径(米)：使用遥感/融合 DEM；超过此半径忽略
   outer_radius: 20000.0
-  # 中远区为提速可对 DEM 做降采样(像元聚合倍数)；1 表示不降采样
   far_downsample: 4
-  # 参考面：以测点高程为基准计算地改(terrain correction)
   reference: station_height
-  # 棱柱解析公式数值稳定性的极小值保护
   epsilon: 1.0e-9
+  # 兼容常用命名
+  zone_depth: 667.0
+  rho: 2670.0
 
 # -----------------------------------------------------------------------------
-# 7. PSTINet 神经推理快速路径 (Physics-guided Spatial Terrain Inference Network)
+# 6. PSTINet 神经推理快速路径 (Physics-guided Spatial Terrain Inference Network)
 # -----------------------------------------------------------------------------
 pstinet:
   enable: true
   model_path: null           # 训练权重路径；为空时推理路径会明确报错而非输出随机值
   patch_size: 128            # 以测点为中心截取的 DEM patch 边长(像元)
-  in_channels: 3             # 输入通道：高程 + 坡度 + 到测点距离(物理引导通道)
+  in_channels: 1             # 输入通道（通常相对高程）
+  center_normalize: true
   device: cpu                # cpu | cuda
-  # ---- 训练相关(scripts/train_pstinet.py 使用) ----
-  train:
-    samples: 2000            # 合成训练样本数(由方域积分自动生成标签)
-    epochs: 50
+
+  # ---- 训练相关 (对应 src/pstinet.train TrainConfig 字段) ----
+  training:
     batch_size: 16
-    lr: 1.0e-3
-    loss: huber              # huber | mse 数据损失
-    physics_weight: 0.1      # 物理正则项权重(非负约束/与坡度单调等)
-    val_ratio: 0.2
+    num_epochs: 50
+    learning_rate: 0.001
+    weight_decay: 1e-5
+    patience: 10
+    device: auto
     checkpoint_dir: ./checkpoints
+    validation_fraction: 0.1
+
+  # 损失函数权重
+  losses:
+    w_data: 1.0
+    w_phys: 0.1
+    w_smooth: 0.01
+    huber_beta: 1.0
+    enforce_nonneg: true
+    enforce_monotonic: false
 
 # -----------------------------------------------------------------------------
-# 8. 地形判别 + 五因子 + 方法推荐 (Terrain classification & method recommendation)
+# 7. 地形判别 + 五因子 + 方法推荐 (Terrain classification & method recommendation)
 # -----------------------------------------------------------------------------
 terrain_classification:
-  # 地形类型按“地形起伏度 relief(局部最大高差, 米)”与“平均坡度(度)”分级。
-  # 阈值参考常用地貌分级，可按测区调整。
-  relief_thresholds:   # 局部起伏度分级断点(米)
-    plain: 30          # < 30  平原/平缓
-    hill: 100          # 30~100 丘陵
-    mountain: 300      # 100~300 山地
-    # >= 300 高山/极复杂
-  slope_thresholds:    # 平均坡度分级断点(度)
+  relief_thresholds:
+    plain: 30
+    hill: 100
+    mountain: 300
+  slope_thresholds:
     plain: 3
     hill: 10
     mountain: 25
-  window: 21           # 计算局部起伏度/坡度统计的窗口(像元)
+  window: 21
 
-# 五因子量化与阈值（用于地形判别 + 触发方法推荐）
 factors:
-  # 因子1：DEM 质量
   dem_quality:
-    good_resolution: 5.0     # 优于该分辨率(米)视为高质量基准
-    max_void_ratio: 0.01     # 空洞(nodata)比例上限，超过则降级
-  # 因子2：地貌复杂度（坡度标准差 / 粗糙度）
+    good_resolution: 5.0
+    max_void_ratio: 0.01
   complexity:
-    high_slope_std: 12.0     # 坡度标准差(度)超过则判“复杂”
-    high_roughness: 5.0      # 粗糙度(米)阈值
-  # 因子3：接边距离（测点到 DEM/数据块边界距离）
+    high_slope_std: 12.0
+    high_roughness: 5.0
   edge:
-    # 测点到边界距离 < 近区半径 * 该系数 时，判为“接边带”，需混合复核
     margin_factor: 1.0
-  # 因子4：测点分布（最近邻间距 / 是否孤立）
   distribution:
-    isolation_distance: 500.0  # 最近邻测点间距(米)超过则视为“孤立/稀疏点”
-  # 因子5：误差阈值（两路径差值）
+    isolation_distance: 500.0
   error:
-    # 方域积分 与 PSTINet 结果差值超过该值(mGal)则进入复核清单
     threshold_mgal: 0.05
 
-# 方法推荐决策引擎
 recommender:
-  # 工作模式：auto(系统自动选择并计算) | recommend(只给推荐方法与理由，不强制) | both(两者都输出)
   mode: both
-  # 目标地改精度(mGal)，影响是否要求高精度方法
   target_accuracy_mgal: 0.01
-  # 候选方法库开关（可关闭某些方法）
   enabled_methods:
-    bouguer_slab: true       # 布格平板(最快，平原适用)
-    zone_standard: true      # 标准方域积分
-    zone_high_precision: true # 高精度方域积分(近区加密)
-    tesseroid_far: true      # 远区球冠/Tesseroid 近似
-    pstinet: true            # 神经推理(加速/鲁棒)
-    hybrid_review: true      # 混合复核(两路径加权+复核)
-  # 混合复核时两路径加权(0=全积分,1=全神经)，可被自适应覆盖
+    bouguer_slab: true
+    zone_standard: true
+    zone_high_precision: true
+    tesseroid_far: true
+    pstinet: true
+    hybrid_review: true
   hybrid_blend: 0.5
 
 # -----------------------------------------------------------------------------
-# 9. 输出 (Outputs)
+# 8. 输出 (Outputs)
 # -----------------------------------------------------------------------------
 output:
   dir: ./results
-  # 三类核心成果 CSV
-  station_corrections: station_corrections.csv   # 测点地改值表
-  difference_statistics: difference_statistics.csv # 差异统计表
-  review_checklist: review_checklist.csv          # 复核清单
-  # 逐测点“全参数”表 + 全局运行清单(可复现)
+  formats: ["geotiff", "npy", "png", "json"]
+  png:
+    dpi: 100
+    cmap: RdYlBu_r
+  geotiff:
+    compress: deflate
+    dtype: float32
+
+  station_corrections: station_corrections.csv
+  difference_statistics: difference_statistics.csv
+  review_checklist: review_checklist.csv
   station_parameters: station_parameters.csv
   run_manifest: run_manifest.json
-  # 栅格成果(供前端成图)
   save_geotiff: true
   fused_dem: fused_dem.tif
   correction_grid: correction_grid.tif
+
+# -----------------------------------------------------------------------------
+# 9. 日志与调试
+# -----------------------------------------------------------------------------
+logging:
+  level: INFO
+  file: null
+  verbose: false
+
+# -----------------------------------------------------------------------------
+# 10. 性能调优
+# -----------------------------------------------------------------------------
+performance:
+  use_numba: true
+  num_threads: 0
+  use_memmap: false
