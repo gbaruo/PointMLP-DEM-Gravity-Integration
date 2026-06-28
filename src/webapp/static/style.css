@@ -1,0 +1,5 @@
+body{font-family: Arial, Helvetica, sans-serif;background:#f7f9fc;color:#111}
+.container{max-width:900px;margin:40px auto;padding:20px;background:#fff;border-radius:6px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
+h1{margin-top:0}
+section{margin-top:16px;padding-top:8px;border-top:1px solid #eee}
+pre{background:#f0f4f8;padding:8px;border-radius:4px}
