@@ -1,0 +1,3 @@
+include templates and static in sdists
+include config/*.yaml recursive-include src/webapp/templates * recursive-include src/webapp/static *
+
