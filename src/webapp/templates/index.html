@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PointMLP Terrain Correction - Demo UI</title>
+    <link rel="stylesheet" href="/static/style.css">
+  </head>
+  <body>
+    <div class="container">
+      <h1>PointMLP Terrain Correction - Demo</h1>
+
+      <section>
+        <h2>Upload point cloud</h2>
+        <form id="uploadForm">
+          <input type="file" id="fileInput" name="file" accept=".npy,.txt,.xyz,.las" />
+          <button type="submit">Upload</button>
+        </form>
+        <div id="uploadResult"></div>
+      </section>
+
+      <section>
+        <h2>Start job</h2>
+        <form id="startForm">
+          <input type="text" id="pathInput" placeholder="Uploaded file path" size="60" />
+          <button type="submit">Start</button>
+        </form>
+        <div id="jobResult"></div>
+      </section>
+
+      <section>
+        <h2>Check job status</h2>
+        <input type="text" id="jobIdInput" placeholder="job id" />
+        <button id="statusBtn">Check</button>
+        <pre id="statusResult"></pre>
+      </section>
+
+    </div>
+
+    <script>
+    const uploadForm = document.getElementById('uploadForm');
+    const fileInput = document.getElementById('fileInput');
+    const uploadResult = document.getElementById('uploadResult');
+    uploadForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const f = fileInput.files[0];
+      if(!f){ alert('select a file'); return }
+      const fd = new FormData(); fd.append('file', f);
+      const r = await fetch('/upload', {method:'POST', body: fd});
+      const j = await r.json();
+      uploadResult.innerText = JSON.stringify(j, null, 2);
+      document.getElementById('pathInput').value = j.path;
+    });
+
+    const startForm = document.getElementById('startForm');
+    const jobResult = document.getElementById('jobResult');
+    startForm.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const p = document.getElementById('pathInput').value;
+      const r = await fetch('/start', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({path: p})});
+      const j = await r.json();
+      jobResult.innerText = JSON.stringify(j, null, 2);
+    });
+
+    document.getElementById('statusBtn').addEventListener('click', async () => {
+      const id = document.getElementById('jobIdInput').value;
+      if(!id) return alert('job id required');
+      const r = await fetch('/status/' + id);
+      const j = await r.json();
+      document.getElementById('statusResult').innerText = JSON.stringify(j, null, 2);
+    });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,133 @@
+[build-system]
+requires = ["setuptools>=45", "wheel", "setuptools_scm[toml]>=6.2"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "PointMLP-DEM-Gravity-Integration"
+version = "0.1.0"
+description = "Physics-guided Adaptive Terrain Correction via Point Cloud DEM Fusion and Neural Inference"
+readme = "README.md"
+requires-python = ">=3.8"
+license = {text = "MIT"}
+authors = [
+    {name = "gbaruo", email = "your.email@example.com"},
+]
+keywords = ["terrain-correction", "gravity", "DEM", "point-cloud", "neural-network"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: GIS",
+    "Topic :: Scientific/Engineering :: Physics",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+]
+
+dependencies = [
+    "numpy>=1.21",
+    "scipy>=1.7",
+    "pyyaml>=5.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=3.0",
+    "pytest-xdist>=2.5",  # 并行测试
+    "black>=22.0",
+    "flake8>=4.0",
+    "isort>=5.10",
+    "mypy>=0.950",
+]
+gpu = [
+    "torch>=1.12",
+]
+geo = [
+    "rasterio>=1.2",
+    "fiona>=1.8",
+    "laspy[lazrs]>=2.0",
+]
+viz = [
+    "matplotlib>=3.5",
+]
+all = [
+    "torch>=1.12",
+    "rasterio>=1.2",
+    "fiona>=1.8",
+    "laspy[lazrs]>=2.0",
+    "matplotlib>=3.5",
+]
+
+[project.urls]
+Homepage = "https://github.com/gbaruo/PointMLP-DEM-Gravity-Integration"
+Documentation = "https://github.com/gbaruo/PointMLP-DEM-Gravity-Integration/blob/main/USAGE.md"
+Repository = "https://github.com/gbaruo/PointMLP-DEM-Gravity-Integration.git"
+"Bug Tracker" = "https://github.com/gbaruo/PointMLP-DEM-Gravity-Integration/issues"
+
+[tool.setuptools]
+packages = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ['py38', 'py39', 'py310', 'py311']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # 目录
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 100
+skip = [".gitignore", ".dockerignore"]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = "-v --cov=src --cov-report=term-missing --cov-report=html"
+markers = [
+    "slow: 标记为慢速测试",
+    "gpu: 需要 GPU 的测试",
+    "integration: 集成测试",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src"]
+omit = [
+    "*/tests/*",
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]

@@ -1,0 +1,248 @@
+# =============================================================================
+# 地形改正系统 - 全局参数配置文件
+# Terrain Correction System - Global Configuration
+# -----------------------------------------------------------------------------
+# 说明：本文件集中管理整个系统的所有可调参数。所有数值均为“合理默认值”，
+#       用户可在 Web 界面 / 桌面端 / 命令行中人工修改覆盖。
+#       每个参数都给出了物理含义与单位，便于生产作业与论文复现。
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 0. CRS 快捷字段（便于直接传给 rasterio 等库）
+# -----------------------------------------------------------------------------
+crs:
+  # EPSG 代码。默认使用 CGCS2000 3 度带(示例：EPSG:4547)。
+  epsg: 4547
+  # 便于直接使用的字符串（代码通常期望 "EPSG:xxxx"）
+  crs_string: "EPSG:4547"
+  # 坐标单位（meter / degree）。方域积分要求米制，故默认 meter。
+  units: meter
+
+# 重力改正物理常数
+physics:
+  # 地壳平均密度 ρ (kg/m^3)。布格/地改默认 2670；若测区有实测密度请替换。
+  density: 2670.0
+  # 万有引力常数 G (m^3 kg^-1 s^-2)
+  gravitational_constant: 6.67430e-11
+  # 输出地改值单位换算到 mGal (1 mGal = 1e-5 m/s^2)，程序内部使用，无需修改。
+  mgal_scale: 1.0e5
+
+# -----------------------------------------------------------------------------
+# 1. 点云地面分类 (Point cloud ground filtering)
+# -----------------------------------------------------------------------------
+ground_filter:
+  # 地面分类方法：csf(默认,布料模拟) | pmf(渐进形态学) | smrf(简单形态学) | deep(深度学习)
+  method: csf
+
+  # ---- CSF 布料模拟滤波参数 (Zhang et al., 2016) ----
+  csf:
+    cloth_resolution: 0.5     # 布料网格分辨率(米)，越小越精细、越慢。近区建议 0.5
+    rigidness: 2              # 布料刚度 1~3：1柔软(陡峭地形) 3刚硬(平坦地形)
+    time_step: 0.65           # 模拟时间步长
+    class_threshold: 0.5      # 地面点判定阈值(米)：点到布料距离 < 阈值判为地面
+    iterations: 500           # 最大迭代次数
+    slope_smooth: false       # 是否对陡坡做后处理平滑
+
+  # ---- PMF 渐进形态学滤波参数 ----
+  pmf:
+    max_window_size: 33       # 最大滤波窗口(像元)
+    slope: 1.0                # 坡度阈值
+    initial_distance: 0.5     # 初始高差阈值(米)
+    max_distance: 3.0         # 最大高差阈值(米)
+    cell_size: 1.0            # 栅格化像元(米)
+
+  # ---- 深度学习地面分类(高级选项) ----
+  deep:
+    model_path: null         # 训练好的权重路径；为空则回退到 csf 并给出明确提示
+    block_size: 50.0         # 切块边长(米)
+    points_per_block: 8192   # 每块采样点数
+
+# -----------------------------------------------------------------------------
+# 2. 大规模点云分块/流式处理 (Tiling for billion-scale point clouds)
+# -----------------------------------------------------------------------------
+tiling:
+  enable: true
+  tile_size: 250.0            # 瓦片边长(米)
+  buffer: 30.0                # 瓦片重叠缓冲区(米)，消除接缝；应 >= 近区插值搜索半径
+  max_points_in_memory: 20000000  # 单次进内存的最大点数(约 2 千万)，按机器内存调整
+  n_workers: 4               # 并行进程数(0 或 1 表示串行)
+
+# -----------------------------------------------------------------------------
+# 3. DEM 生成 (Gridding ground points -> high precision DEM)
+# -----------------------------------------------------------------------------
+# NOTE: 代码中使用的 key 名为 dem_from_pointcloud（DEMGridConfig），以下为
+# 与代码一致的字段。保留旧名 dem_generation 作为兼容注释（若需要也可保留）。
+# -----------------------------------------------------------------------------
+dem_from_pointcloud:
+  # 近区(点云)DEM 目标分辨率(米)
+  resolution: 1.0
+  # 插值方法：idw(反距离加权) | tin(Delaunay 线性) | kriging(普通克里金,较慢)
+  method: idw
+  idw_power: 2.0
+  idw_k: 12
+  idw_search_radius: 10.0
+  crs: "EPSG:4547"
+  nodata: -9999.0
+
+# 兼容旧名（可选）
+dem_generation:
+  near_resolution: 1.0
+  interpolation: idw
+  idw:
+    power: 2.0
+    search_radius: 10.0
+    min_points: 3
+    max_points: 16
+  nodata: -9999.0
+
+# -----------------------------------------------------------------------------
+# 4. DEM 融合 (Near-zone point-cloud DEM  +  far-zone remote-sensing DEM)
+# -----------------------------------------------------------------------------
+# 结构既包含扁平字段(便于代码直接读取)，也保留 nested 子节点用于可读性/兼容。
+# -----------------------------------------------------------------------------
+dem_fusion:
+  # 融合输出统一分辨率(米)
+  target_resolution: 1.0
+  # 过渡带宽度(米)
+  transition_width: 200.0
+  # 权重过渡函数: linear / cosine / sigmoid
+  method: cosine
+  sigmoid_k: 10.0
+  # 高程基准对齐: none / median / plane
+  datum_align: median
+  # 远区 DEM 重采样方法: nearest / bilinear / cubic
+  resample: bilinear
+  nodata: -9999.0
+
+  # 可读性/兼容性 nested fields
+  feather:
+    method: cosine
+    transition_width: 200.0
+  datum_alignment:
+    enable: true
+    method: median
+    sample_max: 100000
+
+# -----------------------------------------------------------------------------
+# 5. 方域积分地形改正 (Zone-domain prism integration — the analytic ground truth)
+# -----------------------------------------------------------------------------
+# 保持原有详细字段，同时补充常用 zone_depth / rho（用于 train.py 等）
+# -----------------------------------------------------------------------------
+zone_integration:
+  inner_radius: 2000.0
+  outer_radius: 20000.0
+  far_downsample: 4
+  reference: station_height
+  epsilon: 1.0e-9
+  # 兼容常用命名
+  zone_depth: 667.0
+  rho: 2670.0
+
+# -----------------------------------------------------------------------------
+# 6. PSTINet 神经推理快速路径 (Physics-guided Spatial Terrain Inference Network)
+# -----------------------------------------------------------------------------
+pstinet:
+  enable: true
+  model_path: null           # 训练权重路径；为空时推理路径会明确报错而非输出随机值
+  patch_size: 128            # 以测点为中心截取的 DEM patch 边长(像元)
+  in_channels: 1             # 输入通道（通常相对高程）
+  center_normalize: true
+  device: cpu                # cpu | cuda
+
+  # ---- 训练相关 (对应 src/pstinet.train TrainConfig 字段) ----
+  training:
+    batch_size: 16
+    num_epochs: 50
+    learning_rate: 0.001
+    weight_decay: 1e-5
+    patience: 10
+    device: auto
+    checkpoint_dir: ./checkpoints
+    validation_fraction: 0.1
+
+  # 损失函数权重
+  losses:
+    w_data: 1.0
+    w_phys: 0.1
+    w_smooth: 0.01
+    huber_beta: 1.0
+    enforce_nonneg: true
+    enforce_monotonic: false
+
+# -----------------------------------------------------------------------------
+# 7. 地形判别 + 五因子 + 方法推荐 (Terrain classification & method recommendation)
+# -----------------------------------------------------------------------------
+terrain_classification:
+  relief_thresholds:
+    plain: 30
+    hill: 100
+    mountain: 300
+  slope_thresholds:
+    plain: 3
+    hill: 10
+    mountain: 25
+  window: 21
+
+factors:
+  dem_quality:
+    good_resolution: 5.0
+    max_void_ratio: 0.01
+  complexity:
+    high_slope_std: 12.0
+    high_roughness: 5.0
+  edge:
+    margin_factor: 1.0
+  distribution:
+    isolation_distance: 500.0
+  error:
+    threshold_mgal: 0.05
+
+recommender:
+  mode: both
+  target_accuracy_mgal: 0.01
+  enabled_methods:
+    bouguer_slab: true
+    zone_standard: true
+    zone_high_precision: true
+    tesseroid_far: true
+    pstinet: true
+    hybrid_review: true
+  hybrid_blend: 0.5
+
+# -----------------------------------------------------------------------------
+# 8. 输出 (Outputs)
+# -----------------------------------------------------------------------------
+output:
+  dir: ./results
+  formats: ["geotiff", "npy", "png", "json"]
+  png:
+    dpi: 100
+    cmap: RdYlBu_r
+  geotiff:
+    compress: deflate
+    dtype: float32
+
+  station_corrections: station_corrections.csv
+  difference_statistics: difference_statistics.csv
+  review_checklist: review_checklist.csv
+  station_parameters: station_parameters.csv
+  run_manifest: run_manifest.json
+  save_geotiff: true
+  fused_dem: fused_dem.tif
+  correction_grid: correction_grid.tif
+
+# -----------------------------------------------------------------------------
+# 9. 日志与调试
+# -----------------------------------------------------------------------------
+logging:
+  level: INFO
+  file: null
+  verbose: false
+
+# -----------------------------------------------------------------------------
+# 10. 性能调优
+# -----------------------------------------------------------------------------
+performance:
+  use_numba: true
+  num_threads: 0
+  use_memmap: false
